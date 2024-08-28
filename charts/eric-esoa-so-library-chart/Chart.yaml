@@ -1,0 +1,4 @@
+apiVersion: v2
+name: eric-esoa-so-library-chart
+version: 2.6.0-1
+type: library

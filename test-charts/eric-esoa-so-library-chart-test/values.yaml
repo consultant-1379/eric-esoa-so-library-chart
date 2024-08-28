@@ -1,0 +1,187 @@
+#
+# COPYRIGHT Ericsson 2022
+#
+#
+#
+# The copyright to the computer program(s) herein is the property of
+#
+# Ericsson Inc. The programs may be used and/or copied only with written
+#
+# permission from Ericsson Inc. or in accordance with the terms and
+#
+# conditions stipulated in the agreement/contract under which the
+#
+# program(s) have been supplied.
+#
+
+global:
+  registry:
+    url: armdocker.rnd.ericsson.se
+    repoPath:
+  database:
+    serverCertSecret: global-server-cert
+    connection:
+      maxLifetime: 30
+      maxPoolSize: 20
+      idleTimeout: 20000
+      minIdle: 1
+  edbDriverImage:
+    name: edb-jdbc-driver
+    tag: 1.4.3
+  security:
+    tls:
+      enabled: true
+
+imageCredentials:
+  # repoPath include the image path relative to the registry url, excluding image name
+  mainImage:
+    repoPath: proj-esoa-so
+    pullPolicy: IfNotPresent
+    registry:
+      url:
+log:
+  streamingMethod: direct
+logging:
+  format:
+    json: true
+terminationGracePeriodSeconds: 30
+topologySpreadConstraints:
+  - topologyKey: kubernetes.io/hostname
+    maxSkew: 2
+    whenUnsatisfiable: ScheduleAnyway
+    nodeAffinityPolicy: Honor
+  - topologyKey: topology.kubernetes.io/zone
+    maxSkew: 1
+    whenUnsatisfiable: DoNotSchedule
+    nodeTaintsPolicy: Ignore
+  - topologyKey: topology.kubernetes.io/region
+    maxSkew: 1
+    whenUnsatisfiable: DoNotSchedule
+    minDomains: 1
+    matchLabelKeys:
+      - pod-template-hash
+
+tolerations:
+ - key: node.kubernetes.io/not-ready
+   operator: Exists
+   effect: NoExecute
+   tolerationSeconds: 0
+ - key: node.kubernetes.io/unreachable
+   operator: Exists
+   effect: NoExecute
+   tolerationSeconds: 0
+ - key: "key1"
+   operator: "Equal"
+   value: "value1"
+   effect: "NoExecute"
+   tolerationSeconds: 3600
+
+prometheus:
+  path: /actuator/prometheus
+  scrape: true
+
+replicaCount: 1
+
+affinity:
+  podAntiAffinity: "soft"
+  topologyKey: "kubernetes.io/hostname"
+
+port:
+  http: 8080
+  https: 8443
+
+database:
+  serverCertSecret: specific-server-cert
+  host: my-edb
+  port: 5444
+  dbName: my_db
+  schemaName: my_schema
+  secret: edb-users-secret
+  userkey: custom-user
+  passwdkey: custom-pwd
+  vendor: edb
+  jdbcUrl: jdbc:edb:my-edb:5444/my_database
+  connection:
+  - maxLifetime: 840000
+    maxPoolSize: 200
+    idleTimeout: 20000
+    minIdle: 2
+
+probes:
+  # Total readiness probe time: 60 seconds
+  #   Initial delay: 10 seconds
+  #   Retry attempts: 10 times x 5 seconds wait = 50 seconds
+  catalogManager:
+    readinessProbe:
+      httpGet:
+        path: /actuator/health
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 10
+      timeoutSeconds: 2
+    # Initial delay liveness probe: 120 seconds (+60 seconds after readiness probe max time)
+    # Retry attempts: 4 times x 5 seconds waits = 20 seconds
+    livenessProbe:
+      httpGet:
+        path: /actuator/health
+        port: 8080
+      initialDelaySeconds: 120
+      periodSeconds: 5
+      failureThreshold: 4
+      timeoutSeconds: 2
+
+resources:
+  eric-esoa-so-library-chart-test:
+    requests:
+      ephemeral-storage: 1Gi
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      ephemeral-storage: 1Gi
+      memory: 2048Mi
+      cpu: 1000m
+
+security:
+  config:
+    mountPath: /app/config/truststore.yaml
+  truststore:
+    path: ${java.io.tmpdir}/truststore.jks
+    caCertDirectory: /var/run/secrets/trustStore/
+    certificates:
+      - secretName: eric-sec-sip-tls-trusted-root-cert
+        fileName: ca.crt
+      - secretName: eric-pm-server-ca
+        fileName: client-cacertbundle.pem
+  keystore:
+    path: ${java.io.tmpdir}/keystore.jks
+    tlsCertDirectory: /var/run/secrets/eric-esoa-so-library-chart-test-int-cert/
+    tlsCertFile: tls.crt
+    tlsKeyFile: tls.key
+    keyPass: "Y2hhbmdlaXQ="
+    storePass: "Y2hhbmdlaXQ="
+    keyAlias: eric-esoa-so-library-chart-test
+    keyStoreType: JKS
+    keyStoreSecretName: eric-esoa-so-library-chart-test-int-cert
+  renewCertRetry:
+    delay: 10000
+    times: 6
+
+  systemMonitoring:
+    expiration: 600
+    keystore:
+      tlsKeyFile: tls.key
+      tlsCertFile: tls.crt
+      tlsCertDirectory: /var/run/secrets/eric-esoa-so-library-chart-test-alarm-handler-int-cert/
+      storePass: "Y2hhbmdlaXQ="
+      keyPass: "Y2hhbmdlaXQ="
+      keyAlias: eric-esoa-so-library-chart-test-alarm
+      path: ${java.io.tmpdir}/alarmkeystore.jks
+      alarmKeyStoreSecretName: eric-esoa-so-library-chart-test-alarm-handler-int-cert
+    faultManagement:
+      protocol: https
+      address: eric-fh-alarm-handler
+      port: 6006
+      apiPath: alarm-handler/v1/fault-indications
+      retry: 5
+      delay: 5000

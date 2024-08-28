@@ -1,0 +1,134 @@
+#
+# COPYRIGHT Ericsson 2022
+#
+#
+#
+# The copyright to the computer program(s) herein is the property of
+#
+# Ericsson Inc. The programs may be used and/or copied only with written
+#
+# permission from Ericsson Inc. or in accordance with the terms and
+#
+# conditions stipulated in the agreement/contract under which the
+#
+# program(s) have been supplied.
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "eric-esoa-so-library-chart.name" . }}
+  labels:
+  {{- include "eric-esoa-so-library-chart.labels" . | nindent 4 }}
+  annotations:
+  {{- include "eric-esoa-so-library-chart.annotations" .| nindent 4 }}
+spec:
+  replicas: {{ include "eric-esoa-so-library-chart.replicas" . }}
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name | quote }}
+  template:
+    metadata:
+      annotations:
+      {{- include "eric-esoa-so-library-chart.annotations" .| nindent 8 }}
+      labels:
+      {{- include "eric-esoa-so-library-chart.labels" .| nindent 8 }}
+    spec:
+      {{- if .Values.tolerations }}
+      tolerations: {{- include "eric-esoa-so-library-chart.tolerations" . | indent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ include "eric-esoa-so-library-chart.terminationGracePeriodSeconds" . }}
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "eric-esoa-so-library-chart.topologySpreadConstraints" . | indent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- include "eric-esoa-so-library-chart.pod-anti-affinity-type" . | nindent 10 }}
+      serviceAccountName: {{ template "eric-esoa-so-library-chart.name" . }}-sa
+      containers:
+      - image: {{ template "eric-esoa-so-library-chart.imagePath" (dict "imageId" "mainImage" "values" .Values "files" .Files) }}
+        name: {{ .Chart.Name | quote }}
+        ports:
+        {{- if eq (include "eric-esoa-so-library-chart.global-security-tls-enabled" .) "true" }}
+        - name: https
+          containerPort: {{ .Values.port.https }}
+        {{- end }}
+        - name: http
+          containerPort: {{ .Values.port.http }}
+        env:
+        - name: SERVICE_ID
+          value: {{ .Chart.Name }}
+        {{- include "eric-esoa-so-library-chart.database-connection-property" .| indent 8 }}
+        - name: JAVA_OPTS
+          {{- if .Values.debug }}
+          value: "{{ join " " .Values.jvmOptions }} {{ join " " .Values.jvmDebugOptions }}"
+          {{- else }}
+          value: "{{ join " " .Values.jvmOptions }}"
+          {{- end }}
+        {{- include "eric-esoa-so-library-chart.db-env-variables" . | nindent 8 }}
+        - name: SECURITY_SCHEME
+          {{- if eq (include "eric-esoa-so-library-chart.global-security-tls-enabled" .) "true" }}
+          value: "https"
+          {{- else }}
+          value: "http"
+          {{- end }}
+        {{- include "eric-esoa-so-library-chart.sip-tls-env-variables.v1" .| indent 8 }}
+        {{- include "eric-esoa-so-library-chart.alarm-env-variables" .| indent 8 }}
+        {{- include "eric-esoa-so-library-chart.loggingEnvVariables" .| indent 4 }}
+        resources: {{ include "eric-esoa-so-library-chart.resourceRequestsAndLimits" (dict "Values" .Values "resourceName" "eric-esoa-so-library-chart-test") | nindent 10 }}
+        readinessProbe:
+          {{- with .Values.probes.catalogManager.readinessProbe }}
+          httpGet:
+            path: {{ .httpGet.path | quote }}
+            port: {{ .httpGet.port }}
+          initialDelaySeconds: {{ .initialDelaySeconds }}
+          periodSeconds: {{ .periodSeconds }}
+          timeoutSeconds: {{ .timeoutSeconds }}
+          failureThreshold: {{ .failureThreshold }}
+          {{- end }}
+        livenessProbe:
+          {{- with .Values.probes.catalogManager.livenessProbe }}
+          httpGet:
+            path: {{ .httpGet.path | quote }}
+            port: {{ .httpGet.port }}
+          initialDelaySeconds: {{ .initialDelaySeconds }}
+          periodSeconds: {{ .periodSeconds }}
+          timeoutSeconds: {{ .timeoutSeconds }}
+          failureThreshold: {{ .failureThreshold }}
+          {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 102174
+          privileged: false
+          capabilities:
+            drop:
+              - all
+        volumeMounts:
+        {{- include "eric-esoa-so-library-chart.edb-driver-volume-mount" . | nindent 10 }}
+        {{- include "eric-esoa-so-library-chart.edb-server-cert-volume-mount" . | indent 10 }}
+        {{- include "eric-esoa-so-library-chart.sip-tls-volume-mounts.v1" . | indent 10 }}
+        {{- include "eric-esoa-so-library-chart.alarm-volume-mounts" . | indent 10 }}
+        {{- if eq "true" ( include "eric-esoa-so-library-chart.is-it-mtls" .) }}
+        {{- include "eric-esoa-so-library-chart.edb-client-cert-volume-mount" . | nindent 10 }}
+        {{- end }}
+      {{- if eq ( include "eric-esoa-so-library-chart.value-db-vendor" . ) "edb" }}
+      initContainers:
+      {{- include "eric-esoa-so-library-chart.edb-driver-init-container" . | indent 8 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            privileged: false
+            capabilities:
+              drop:
+                - all
+      {{- end }}
+      volumes:
+      {{- include "eric-esoa-so-library-chart.edb-driver-volume" . | indent 6}}
+      {{- include "eric-esoa-so-library-chart.edb-server-cert-volume" . | indent 6 }}
+      {{- include "eric-esoa-so-library-chart.sip-tls-volumes.v1" . | indent 6 }}
+      {{- include "eric-esoa-so-library-chart.alarm-volumes" . | indent 6 }}
+      {{- if eq "true" ( include "eric-esoa-so-library-chart.is-it-mtls" . ) -}}
+      {{- include "eric-esoa-so-library-chart.edb-client-cert-volume" . | nindent 6 }}
+      {{- end }}
+      nodeSelector: {{- include "eric-esoa-so-library-chart.nodeSelector" . | nindent 8 }}

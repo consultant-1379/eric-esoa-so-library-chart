@@ -1,0 +1,11 @@
+apiVersion: v2
+name: eric-esoa-so-library-chart-test
+description: A Helm chart for testing the library chart functions
+type: application
+version: 0.1.0
+appVersion: "1.16.0"
+dependencies:
+  - name: eric-esoa-so-library-chart
+    version: 2.6.0-1
+    repository: file://../../charts/eric-esoa-so-library-chart/
+
